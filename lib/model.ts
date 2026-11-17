@@ -253,7 +253,10 @@ export function impliedValue(
   model: ModelConstants = MODEL,
 ): { implied: number; multiple: number; comparables: number; growthPct: number; growthMult: number; maturityMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
-  const { multiple, comparables } = multipleFor(protocol, multiples);
+  const { multiple: rawMultiple, comparables } = multipleFor(protocol, multiples);
+  // The multiple is rounded to 4 decimals before it prices anything, so the dashboard's own
+  // recompute from the stored multiple lands on the same number board.json carries.
+  const multiple = round4(rawMultiple);
   const rawGrowth = finite(protocol.change_7d, 0);
   const growthPct = Math.min(model.growth_cap, Math.max(model.growth_floor, rawGrowth));
   const growthMult = 1 + (growthPct / 100) * model.growth_weight;
