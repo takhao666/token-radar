@@ -1,7 +1,8 @@
 // Token Radar's dashboard, model radar-2. It reads window.RADAR (written beside dashboard/ by
 // main.ts) and renders the ranked board, a filterable table, a per-protocol detail dialog with the
 // model's own inputs and the protocol's farm plan, and the methodology with the derived multiples.
-// No network: every byte it shows is in data.js.
+// It also shows the week's biggest movers among pre-token rows, each row's own risk note, and one
+// standing line per category. No network: every byte it shows is in data.js.
 (function () {
   'use strict';
 
@@ -234,6 +235,30 @@
     );
   }
 
+  function moversPanel() {
+    var m = DATA.movers;
+    if (!m || (!m.gainers.length && !m.losers.length)) return null;
+    function moverList(list, label) {
+      return el('div', { class: 'movers-col' },
+        el('h3', { text: label }),
+        el('ul', { class: 'movers' }, list.map(function (x) {
+          return el('li', null,
+            el('button', { type: 'button', onclick: function () { openDetail(x.slug); } },
+              el('b', { text: x.name }),
+              el('span', { class: 'sub', text: (x.category || 'Other') + ' · ' + fmtUsd(x.tvl_usd) + ' TVL' }),
+              el('span', { class: 'num ' + (x.change_7d >= 0 ? 'pos' : 'neg'), text: fmtPct(x.change_7d) })
+            )
+          );
+        }))
+      );
+    }
+    return el('section', { class: 'panel movers-panel' },
+      el('h2', { text: 'Biggest movers this week' }),
+      el('p', { class: 'sub', text: 'Seven-day TVL change among pre-token rows. A fast riser is not a better farm on its own: read the risk note on its detail page before chasing the move.' }),
+      el('div', { class: 'movers-grid' }, moverList(m.gainers, 'Rising fastest'), moverList(m.losers, 'Falling fastest'))
+    );
+  }
+
   function boardTable() {
     var list = sortedRows(rows());
     if (list.length === 0) {
@@ -332,6 +357,19 @@
         el('thead', null, el('tr', null, el('th', { text: 'Category' }), el('th', { text: 'Live comparables' }), el('th', { text: 'Multiple' }))),
         el('tbody', null, rows)
       ),
+      el('h3', { text: 'Where the board stands by category' }),
+      el('table', { class: 'mult-table' },
+        el('thead', null, el('tr', null, el('th', { text: 'Category' }), el('th', { text: 'Rows' }), el('th', { text: 'Watchlist' }), el('th', { text: 'Multiple' }), el('th', { text: 'Top row' }))),
+        el('tbody', null, (DATA.categories || []).map(function (c) {
+          return el('tr', null,
+            el('td', { text: c.category }),
+            el('td', { class: 'num', text: String(c.rows) }),
+            el('td', { class: 'num', text: String(c.watchlist_rows) }),
+            el('td', { class: 'num', text: c.median_multiple.toFixed(3) + 'x' }),
+            el('td', null, el('button', { type: 'button', class: 'linklike', onclick: function () { openDetail(c.top_slug); } }, c.top_name + ' · ' + fmtUsd(c.top_implied_usd)))
+          );
+        }))
+      ),
       el('p', { class: 'note', text: 'TVL and seven-day growth come from the snapshot. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days. The board leaves out exchanges, bridges, liquid staking and restaking, versioned pools and wrapped or staked products: a product of a token that already trades is not a launch of its own. "No token" means no token on record in this snapshot, never a promise that none exists.' })
     );
   }
@@ -358,6 +396,7 @@
     ));
     dialog.appendChild(el('section', { class: 'detail-section' },
       el('p', { class: 'thesis', text: row.thesis }),
+      el('p', { class: 'risk', text: 'Risk: ' + (row.risk || 'No risk note on record.') }),
       el('h3', { text: 'Implied value' }),
       el('div', { class: 'equation' },
         el('div', null, el('span', { text: 'TVL' }), el('b', { class: 'num', text: fmtUsd(row.tvl_usd) })),
@@ -393,6 +432,10 @@
     shell.appendChild(header());
     shell.appendChild(lede());
     shell.appendChild(controls());
+    if (state.tab === 'pre-token') {
+      var movers = moversPanel();
+      if (movers) shell.appendChild(movers);
+    }
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
     if (state.tab === 'pre-token') shell.appendChild(modelPanel());
     shell.appendChild(el('p', { class: 'foot', text: 'Source: ' + DATA.source + '. "No token" means no token on record in this snapshot. Implied values are a model estimate, not a price.' }));

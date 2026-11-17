@@ -102,9 +102,29 @@ td.num { font-family: var(--mono); font-size: 12.5px; }
 .pill.high { color: var(--green); background: var(--green-dim); }
 .pill.medium { color: var(--amber); background: #451a03; }
 .pill.low { color: var(--red); background: #450a0a; }
+.movers-panel { margin: 0 0 14px; padding: 16px 20px 18px; }
+.movers-panel h2 { margin: 0 0 4px; font-size: 17px; }
+.movers-panel > p { margin: 0 0 12px; }
+.movers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; }
+.movers-col h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.movers { list-style: none; margin: 0; padding: 0; }
+.movers li { border-bottom: 1px solid #1a2531; }
+.movers li:last-child { border-bottom: 0; }
+.movers button { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left;
+  background: none; border: 0; padding: 7px 2px; cursor: pointer; }
+.movers button:hover b { color: var(--accent); }
+.movers button b { font-weight: 600; }
+.movers button .sub { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movers button .num { font-family: var(--mono); font-size: 12.5px; }
+.risk { background: #1c1410; border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+  padding: 10px 14px; margin: 0 0 12px; color: var(--text); }
+.linklike { background: none; border: 0; padding: 0; cursor: pointer; color: var(--accent); font-size: 13px; text-align: left; }
+.linklike:hover { text-decoration: underline; }
+.model h3 { margin: 16px 0 8px; font-size: 14px; }
 .foot { margin-top: 18px; color: var(--faint); font-size: 12.5px; }
 @media (max-width: 720px) {
   .facts { grid-template-columns: repeat(2, 1fr); }
+  .movers-grid { grid-template-columns: 1fr; }
   .lede h1 { font-size: 21px; }
   #q { width: 100%; }
   .count { margin-left: 0; }

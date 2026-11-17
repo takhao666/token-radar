@@ -23,6 +23,9 @@
 //   implied    = max(1, round(tvl_usd x multiple x growthMult x maturity))
 //
 // No protocol name is ever special-cased: the same function scores every row.
+//
+// Each row also carries its own risk note, and the board ships two more views of the same figures:
+// the week's biggest movers among the pre-token rows, and one standing line per category.
 
 /** The snapshot's protocol entry: exactly the ten fields the sealed input carries. */
 export interface SnapshotProtocol {
@@ -112,6 +115,7 @@ export interface BoardRow {
     age_days: number | null;
   };
   thesis: string;
+  risk: string;
   confidence: 'high' | 'medium' | 'low';
   category_rank: number;
   farm_steps: string[];
@@ -134,6 +138,7 @@ export interface RadarRow {
   growth_multiplier: number;
   maturity_multiplier: number;
   thesis: string;
+  risk: string;
   confidence: 'high' | 'medium' | 'low';
   category_rank: number;
 }
@@ -156,6 +161,33 @@ export interface CategoryMultiple {
   multiple: number;
 }
 
+/** One of the week's fastest movers among the pre-token rows. */
+export interface Mover {
+  slug: string;
+  name: string;
+  category: string | null;
+  change_7d: number | null;
+  tvl_usd: number;
+  implied_value_usd: number;
+}
+
+/** The week's five fastest risers and five fastest fallers among the pre-token rows. */
+export interface Movers {
+  gainers: Mover[];
+  losers: Mover[];
+}
+
+/** One category's standing on the board: its rows, its median multiple, its top row. */
+export interface CategorySummary {
+  category: string;
+  rows: number;
+  watchlist_rows: number;
+  median_multiple: number;
+  top_slug: string;
+  top_name: string;
+  top_implied_usd: number;
+}
+
 /** Everything the dashboard needs: the board, the live set, and the model it runs. */
 export interface RadarData {
   as_of: string;
@@ -170,6 +202,8 @@ export interface RadarData {
   live_size: number;
   global_multiple: number;
   multiples: CategoryMultiple[];
+  movers: Movers;
+  categories: CategorySummary[];
   rows: RadarRow[];
   live: LiveRow[];
 }
@@ -312,6 +346,18 @@ export function confidenceFor(p: SnapshotProtocol): 'high' | 'medium' | 'low' {
   return 'low';
 }
 
+/** What could go wrong farming this protocol, from its own figures alone. */
+export function riskFor(p: SnapshotProtocol, age: number | null, growthPct: number, comparables: number): string {
+  const flags: string[] = [];
+  if (growthPct <= -20) flags.push(`TVL fell ${Math.abs(growthPct).toFixed(0)}% in 7 days, so the position may keep shrinking while you hold it`);
+  if (age === null) flags.push('no listing date on record, so the age behind the maturity score is a guess');
+  else if (age < 90) flags.push(`only ${age} days on record, so the track record is thin`);
+  if (comparables < MODEL.multiple_min_comparables) flags.push('fewer live comparables in its category, so the multiple is the global fallback');
+  if (p.tvl_usd < 100_000_000) flags.push('under $100M of TVL, so one large wallet leaving moves the pool');
+  if (flags.length === 0) return 'The main risk is the launch itself: a protocol may run for years and never issue a token.';
+  return `Watch out: ${flags.join('; ')}.`;
+}
+
 /** One line saying why this protocol is worth farming, from its own figures alone. */
 export function thesisFor(p: SnapshotProtocol, categoryRank: number, age: number | null, growthPct: number): string {
   const tvl =
@@ -387,6 +433,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       age_days: s.age,
     },
     thesis: thesisFor(s.p, catRank.get(s.p.slug) ?? 0, s.age, s.growthPct),
+    risk: riskFor(s.p, s.age, s.growthPct, s.comparables),
     confidence: confidenceFor(s.p),
     category_rank: catRank.get(s.p.slug) ?? 0,
     farm_steps: farmSteps(s.p, s.age).map(stepText),
@@ -507,6 +554,57 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   ];
 }
 
+/** The five fastest risers and five fastest fallers, by seven-day change. */
+export function moversOf(board: BoardRow[]): Movers {
+  const withChange = board.filter((r) => r.change_7d !== null);
+  const toMover = (r: BoardRow): Mover => ({
+    slug: r.slug,
+    name: r.name,
+    category: r.category,
+    change_7d: r.change_7d,
+    tvl_usd: r.tvl_usd,
+    implied_value_usd: r.implied_value_usd,
+  });
+  const gainers = withChange
+    .slice()
+    .sort((a, b) => (b.change_7d ?? 0) - (a.change_7d ?? 0))
+    .slice(0, 5)
+    .map(toMover);
+  const losers = withChange
+    .slice()
+    .sort((a, b) => (a.change_7d ?? 0) - (b.change_7d ?? 0))
+    .slice(0, 5)
+    .map(toMover);
+  return { gainers, losers };
+}
+
+/** A per-category standing table, built from the ranked board and the derived multiples. */
+export function categorySummaries(board: BoardRow[], multiples: Multiples, watchlist: string[]): CategorySummary[] {
+  const byCat = new Map<string, BoardRow[]>();
+  for (const r of board) {
+    const key = r.category ?? 'Other';
+    const list = byCat.get(key) ?? [];
+    list.push(r);
+    byCat.set(key, list);
+  }
+  const out: CategorySummary[] = [];
+  for (const [category, rows] of byCat) {
+    const top = rows[0]!;
+    const entry = multiples.byCategory.get(category);
+    out.push({
+      category,
+      rows: rows.length,
+      watchlist_rows: rows.filter((r) => watchlist.includes(r.slug)).length,
+      median_multiple: round4(entry !== undefined ? entry.multiple : multiples.global),
+      top_slug: top.slug,
+      top_name: top.name,
+      top_implied_usd: top.implied_value_usd,
+    });
+  }
+  out.sort((a, b) => b.rows - a.rows || (a.category < b.category ? -1 : 1));
+  return out;
+}
+
 /** The live-token protocols, by market cap, for the dashboard's Live token view. */
 export function liveRows(snapshot: Snapshot): LiveRow[] {
   return snapshot.protocols
@@ -542,6 +640,7 @@ export function radarRow(row: BoardRow): RadarRow {
     growth_multiplier: row.model.growth_multiplier,
     maturity_multiplier: row.model.maturity_multiplier,
     thesis: row.thesis,
+    risk: row.risk,
     confidence: row.confidence,
     category_rank: row.category_rank,
   };
@@ -569,6 +668,8 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     live_size: live.length,
     global_multiple: round4(multiples.global),
     multiples: multiplesTable,
+    movers: moversOf(board),
+    categories: categorySummaries(board, multiples, snapshot.watchlist),
     rows: board.map(radarRow),
     live,
   };
